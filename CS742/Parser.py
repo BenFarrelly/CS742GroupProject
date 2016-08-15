@@ -1,6 +1,7 @@
 __author__ = 'Ben'
 import json
 import csv
+import operator
 class Parser:
 
     def __init__(self):
@@ -14,8 +15,11 @@ class Parser:
         self.comments_for_most_viewed_video = 0
         self.comments_for_most_commented_video = 0
         self.data = dict()
+        self.data_category_tuples = dict()
         self.timeline_uploads = dict()
         self.timeline_uploaders = dict([])
+        self.video_size = []
+        self.category_popularity = {}
 
     def parse_dataset(self, path):
 
@@ -98,6 +102,56 @@ class Parser:
             for keys in sorted(self.timeline_uploads):
                 writer.writerow([keys, self.timeline_uploads[keys], len(self.timeline_uploaders[keys])])
 
+    def video_size_dist(self):
+        for keys in self.data.keys():
+            if self.is_int(self.data[keys]['runtime']):
+                self.video_size.append(self.data[keys]['runtime'])
+
+        self.video_size.sort()
+        self.video_size.reverse()
+        self.write_video_dist()
+    def write_video_dist(self):
+        with open('video_dist.csv','w', newline='\n') as csvfile:
+            #fieldnames = ['Date', 'Number of videos', 'Number of Active Users']
+            writer = csv.writer(csvfile)
+
+            for keys in self.video_size:
+
+                writer.writerow([keys])
+
+    def most_popular_category(self):
+        #This function will make a dictionary which will have the category and aggregated views 'channels'
+        #e.g. ['amateur', 'milf'] : 69
+        print("At start of first loop")
+        for keys in self.data_category_tuples.keys():
+            if self.data_category_tuples[keys]['channels'] in self.category_popularity and self.is_int(self.data_category_tuples[keys]['nb_views']):
+                self.category_popularity[self.data_category_tuples[keys]['channels']] += self.data_category_tuples[keys]['nb_views']
+            elif (self.data_category_tuples[keys]['channels'] not in self.category_popularity.keys()) and (self.is_int(self.data_category_tuples[keys]['nb_views'])):
+                #when the channels are not yet in the dictionary
+                self.category_popularity[self.data[keys]['channels']] = self.data_category_tuples[keys]['nb_views']
+        #Make printable version
+       # sorted_by_views = sorted(self.data_category_tuples.items()['channels'], key=operator.itemgetter(1))
+        #Make list of lists
+        #category_list = []
+        #print("At start of second loop")
+        #for keys in self.data_category_tuples:
+         #   if self.is_int(self.data_category_tuples[keys]['nb_views']) and  self.data_category_tuples[keys]['channels'] not in category_list:
+         #       category_list.append([self.data_category_tuples[keys]['channels'], self.data_category_tuples[keys]['nb_views']])
+
+       # category_list.sort(key=lambda x:x[1])
+
+        with open('category_pop_dist.csv', 'w', newline='\n') as csvfile:
+            writer = csv.writer(csvfile)
+            print("About to start writing")
+            for keys in self.category_popularity.keys():
+                writer.writerow([keys, self.category_popularity[keys]])
+
+    def make_categories_tuples(self):
+        self.data_category_tuples = self.data
+        for keys in self.data.keys():
+            temp = self.data[keys]['channels']
+            temp_tuple = tuple(temp)
+            self.data_category_tuples[keys]['channels'] = temp_tuple
     def is_int(self, number):
         try:
             int(number)
@@ -112,7 +166,10 @@ if __name__ == '__main__':
     xhamsterParser.parse_dataset('xhamster.json')
     #print("Number of videos: ")
     xhamsterParser.get_number_of_videos()
-    xhamsterParser.timeline_video_uploads()
+   # xhamsterParser.timeline_video_uploads()
+   # xhamsterParser.video_size_dist()
+    xhamsterParser.make_categories_tuples()
+    xhamsterParser.most_popular_category()
     print("Complete")
    # print("Number of users: ")
  #   xhamsterParser.get_number_of_users()
