@@ -1,7 +1,10 @@
+from functools import reduce
+import operator
+
 __author__ = 'Ben'
 import json
 import csv
-import operator
+
 class Parser:
 
     def __init__(self):
@@ -20,6 +23,7 @@ class Parser:
         self.timeline_uploaders = dict([])
         self.video_size = []
         self.category_popularity = {}
+        self.categories= {}
 
     def parse_dataset(self, path):
 
@@ -105,10 +109,14 @@ class Parser:
     def video_size_dist(self):
         for keys in self.data.keys():
             if self.is_int(self.data[keys]['runtime']):
-                self.video_size.append(self.data[keys]['runtime'])
 
-        self.video_size.sort()
-        self.video_size.reverse()
+                self.video_size.append([self.data[keys]['runtime'], keys])
+        print("Sorting")
+        self.video_size.sort(reverse=True)
+        print("Sorted")
+        #self.video_size.sort()
+        #self.video_size.reverse()
+        #print(self.video_size[0])
         self.write_video_dist()
     def write_video_dist(self):
         with open('video_dist.csv','w', newline='\n') as csvfile:
@@ -117,18 +125,21 @@ class Parser:
 
             for keys in self.video_size:
 
-                writer.writerow([keys])
+                writer.writerow(keys)
 
     def most_popular_category(self):
         #This function will make a dictionary which will have the category and aggregated views 'channels'
         #e.g. ['amateur', 'milf'] : 69
         print("At start of first loop")
+
         for keys in self.data_category_tuples.keys():
             if self.data_category_tuples[keys]['channels'] in self.category_popularity and self.is_int(self.data_category_tuples[keys]['nb_views']):
                 self.category_popularity[self.data_category_tuples[keys]['channels']] += self.data_category_tuples[keys]['nb_views']
+
             elif (self.data_category_tuples[keys]['channels'] not in self.category_popularity.keys()) and (self.is_int(self.data_category_tuples[keys]['nb_views'])):
                 #when the channels are not yet in the dictionary
                 self.category_popularity[self.data[keys]['channels']] = self.data_category_tuples[keys]['nb_views']
+
         #Make printable version
        # sorted_by_views = sorted(self.data_category_tuples.items()['channels'], key=operator.itemgetter(1))
         #Make list of lists
@@ -146,12 +157,81 @@ class Parser:
             for keys in self.category_popularity.keys():
                 writer.writerow([keys, self.category_popularity[keys]])
 
+
+
+
     def make_categories_tuples(self):
         self.data_category_tuples = self.data
         for keys in self.data.keys():
             temp = self.data[keys]['channels']
             temp_tuple = tuple(temp)
             self.data_category_tuples[keys]['channels'] = temp_tuple
+            if(self.data[keys]['channels'] not in self.categories ):
+                    self.categories[self.data_category_tuples[keys]['channels']] = 1
+            elif self.data[keys]['channels'] in self.categories:
+                    self.categories[self.data[keys]['channels']] += 1
+
+        with open('videos_per_category.csv', 'w', newline='\n') as csvfile:
+            writer = csv.writer(csvfile)
+            print("About to start writing videos per category")
+            for keys in self.categories.keys():
+                writer.writerow([keys, self.categories[keys]])
+    def calculate_table_3(self):
+        mean_content_duration = []
+        unique_uploaders = []
+        total_uploaders = 0
+        total_views = 0
+        total_videos = 0
+        total_comments = 0
+        number_of_ratings = 0
+        categories = []
+        categories_on_video_count = 0
+        for keys in self.data.keys():
+            #Calculating results for Table 3 in Measurements and Analysis of a Adult Video Portal
+            #Mean Content Duration
+            if(self.is_int(self.data[keys]['runtime'])):
+                mean_content_duration.append(self.data[keys]['runtime'])
+            #Number of uploaders
+            if(self.data[keys]['uploader'] not in unique_uploaders):
+                total_uploaders += 1
+            #Number of visits per day - number of views per day
+            #total views / days
+
+            #Popularity skew - Top 10% of videos, % of views
+            #Calculate the top ten percent
+
+            #Mean views per video
+            if(self.is_int(self.data[keys]['nb_views'])):
+                total_views += self.data[keys]['nb_views']
+            #Mean number of comments
+            if(self.is_int(self.data[keys]['nb_comments'])):
+                total_comments += self.data[keys]['nb_comments']
+            total_videos += 1
+            #%Comments per View
+
+            #Number of ratings
+            if(self.is_int(self.data[keys]['nb_votes'])):
+                number_of_ratings += self.data[keys]['nb_votes']
+            #% Ratings per View
+
+            #Number of categories
+            for category in self.data[keys]['channels']:
+                if(category in categories):
+                    continue
+                else:
+                    categories.append(category)
+            #Mean categories per video
+            categories_on_video_count += len(self.data[keys]['channels'])
+        print("Mean content duration: ", reduce(lambda x, y: x +y, mean_content_duration)/len(mean_content_duration))
+        print ("Mean views per day :" , self.number_of_views / len(self.timeline_uploads))
+        print("Mean views per video: ", total_views/total_videos)
+        print("Mean comments per video", (total_comments/total_videos))
+        print("Comments per view", (total_comments/total_views)*100, "%")
+        print("Percentage ratings per view", (number_of_ratings/total_views)*100, "%")
+        print("Number of ratings", number_of_ratings/total_videos)
+        print("Number of categories", len(categories))
+        print("Mean categories per video", categories_on_video_count/total_videos)
+
     def is_int(self, number):
         try:
             int(number)
@@ -166,10 +246,12 @@ if __name__ == '__main__':
     xhamsterParser.parse_dataset('xhamster.json')
     #print("Number of videos: ")
     xhamsterParser.get_number_of_videos()
-   # xhamsterParser.timeline_video_uploads()
-   # xhamsterParser.video_size_dist()
+    xhamsterParser.timeline_video_uploads()
+    #xhamsterParser.video_size_dist()
     xhamsterParser.make_categories_tuples()
-    xhamsterParser.most_popular_category()
+    xhamsterParser.calculate_table_3()
+    #xhamsterParser.most_popular_category()
+
     print("Complete")
    # print("Number of users: ")
  #   xhamsterParser.get_number_of_users()
