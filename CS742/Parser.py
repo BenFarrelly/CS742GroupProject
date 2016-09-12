@@ -1,6 +1,11 @@
 from functools import reduce
+import http
 import operator
 from datetime import timedelta, date, datetime
+import random
+#from requests import async
+import async as async
+import grequests
 from dateutil import relativedelta
 __author__ = 'Ben'
 import json
@@ -27,6 +32,7 @@ class Parser:
         self.categories= {}
         self.most_popular_authors_freq = {}
         self.hot_author_list = []
+
     def parse_dataset(self, path):
 
          with open(path) as data_file:
@@ -132,6 +138,7 @@ class Parser:
     def most_popular_category(self):
         #This function will make a dictionary which will have the category and aggregated views 'channels'
         #e.g. ['amateur', 'milf'] : 69
+
         print("At start of first loop")
 
         for keys in self.data_category_tuples.keys():
@@ -159,7 +166,30 @@ class Parser:
             for keys in self.category_popularity.keys():
                 writer.writerow([keys, self.category_popularity[keys]])
 
-
+    def most_popular_category_single_category(self):
+        print("At start of first loop")
+        single_category_popularity_videos = {}
+        single_category_popularity_views = {}
+        for keys in self.data_category_tuples.keys():
+            for i in self.data_category_tuples[keys]['channels']: #keys is a tuple, for each tuple we shall add to dictionary
+                if(i not in single_category_popularity_videos):
+                    single_category_popularity_videos[i] = 1
+                elif(i in single_category_popularity_videos):
+                    single_category_popularity_videos[i] += 1
+                if(i not in single_category_popularity_views and self.is_int(self.data_category_tuples[keys]['nb_views'])):
+                    single_category_popularity_views[i] = self.data_category_tuples[keys]['nb_views']
+                elif(i in single_category_popularity_views and self.is_int(self.data_category_tuples[keys]['nb_views'])):
+                    single_category_popularity_views[i] += self.data_category_tuples[keys]['nb_views']
+        with open('category_pop_videos_single_cat.csv', 'w', newline='\n') as csvfile:
+            writer = csv.writer(csvfile)
+            print("About to start writing")
+            for keys in single_category_popularity_videos.keys():
+                writer.writerow([keys, single_category_popularity_videos[keys]])
+        with open('category_pop_views_single_cat.csv', 'w', newline='\n') as csvfile:
+            writer = csv.writer(csvfile)
+            print("About to start writing")
+            for keys in single_category_popularity_views.keys():
+                writer.writerow([keys, single_category_popularity_views[keys]])
 
 
     def make_categories_tuples(self):
@@ -327,14 +357,14 @@ class Parser:
                 l = self.create_six_month_list(start_date, end_date, date_list)
             #Find the hottest authors! woo
                 author_dict[n] = self.find_hottest_authors(l)
-                self.compare_hot_authors(author_dict[n], start_date)
+                #self.compare_hot_authors(author_dict[n], start_date)
             else:
                 start_date = start_date +relativedelta.relativedelta(months=+6)
                 end_date = end_date +relativedelta.relativedelta(months=+6)
                 l = self.create_six_month_list(start_date, end_date, date_list)
             #Find the hottest authors! woo
                 author_dict[n] = self.find_hottest_authors(l)
-                self.compare_hot_authors(author_dict[n], start_date)
+                #self.compare_hot_authors(author_dict[n], start_date)
     def compare_hot_authors(self, author_dict, start_date):
         #this function is designed to compare each hotset: Shall put on excel
         #for each hotset, find how many are new to the hot set
@@ -344,9 +374,9 @@ class Parser:
             if(keys not in  self.hot_author_list):
                 self.hot_author_list.append(keys)
                 new_authors += 1
-                print(keys, " new to the hotset!")
-            else:
-                print(keys, " already appeared in the hotset")
+              #  print(keys, " new to the hotset!")
+            #else:
+             #print(keys, " already appeared in the hotset")
 
         print(start_date, ", amount of new authors in this period: ", new_authors)
 
@@ -359,16 +389,19 @@ class Parser:
         return date_list
 
     def find_hottest_authors(self, date_list) -> dict:
+        #Hotset on number of videos! NOT VIEWS
         #Need to compare each author
         authors = {} # contains, {author: views }
         authors_videos = {}
-        total_views  = 0
+        total_views = 0
+        total_videos = 0
         for keys in self.data.keys():
             if not (self.data[keys]['upload_date'] == "NA" ):
                 data_date = datetime.strptime(self.data[keys]['upload_date'], "%Y-%m-%d" )
                 data_date = datetime(data_date.year, data_date.month, data_date.day).date().isoformat()
                 if(data_date in date_list): #need to convert date string into datetime.date object
                     total_views += self.data[keys]['nb_views']
+                    total_videos += 1
                     if(self.data[keys]['uploader'] in authors):
                         authors[self.data[keys]['uploader']] += self.data[keys]['nb_views']
                         authors_videos[self.data[keys]['uploader']] += 1
@@ -384,38 +417,66 @@ class Parser:
         print("Total views: ", total_views)
         hot_authors = {}
         for keys in authors.keys():
-            if((authors[keys] / total_views) >= 0.005):
-                hot_authors[keys] = authors[keys]
+
+            hot_authors[keys] = authors_videos[keys]
+        hotset_list = list(hot_authors.items())
+        top_hotset_list =  sorted(hotset_list, key=lambda x:x[1], reverse=True)
+        top_hotset_list = top_hotset_list[0:int(len(top_hotset_list)/10)]
         PATH = 'dates_'+ date_list[0]
-        PATH = PATH +'_'+ date_list[len(date_list)-1]+'halfpercentthreshold.csv'
+        PATH = PATH +'_'+ date_list[len(date_list)-1]+'.csv'
         PATH = PATH.replace("/", "_")
         with open(PATH, 'w', newline='\n') as csvfile:
             writer = csv.writer(csvfile)
             print("About to start writing hot authors from", date_list[0], " to ", date_list[len(date_list)-1])
-            for keys in hot_authors:
-                writer.writerow([keys, hot_authors[keys], (hot_authors[keys]/total_views*100)])
+            for keys in top_hotset_list:
+                writer.writerow([keys[0], keys[1]])
                 #Finding frequency of these authors in the hotsets
                 if(keys in self.most_popular_authors_freq):
                     self.most_popular_authors_freq[keys] += 1
                 else:
                     self.most_popular_authors_freq[keys] = 1
-        print("Number of Authors in ", date_list[0],": ", len(hot_authors))
-        with open("videos_"+date_list[0] + "_" + date_list[len(date_list)-1]+"half%threshold", 'w', newline='\n') as csvfile:
-            writer = csv.writer(csvfile)
-            print("About to start writing number of videos each hot author made", date_list[0], " to ", date_list[len(date_list)-1])
-            for keys in hot_authors:
-                writer.writerow([keys, authors_videos[keys]])
-                #Finding frequency of these authors in the hotsets
-                if(keys in self.most_popular_authors_freq):
-                    self.most_popular_authors_freq[keys] += 1
-                else:
-                    self.most_popular_authors_freq[keys] = 1
-        return hot_authors
+        print("Number of Authors in ", date_list[0],": ", len(top_hotset_list))
+
+        new_authors = 0
+        for keys in top_hotset_list:
+            if(keys[0] not in  self.hot_author_list):
+                self.hot_author_list.append(keys[0])
+                new_authors += 1
+
+        print(date_list[0], ", amount of new authors in this period: ", new_authors)
+              #  print(keys, " new to the hotset!")
+            #else:
+             #print(keys, " already appeared in the hotset")
+
+        #with open("videos_"+date_list[0] + "_" + date_list[len(date_list)-1]+"half%threshold", 'w', newline='\n') as csvfile:
+        #   writer = csv.writer(csvfile)
+        #   print("About to start writing number of videos each hot author made", date_list[0], " to ", date_list[len(date_list)-1])
+        #   for keys in top_hotset_list:
+        #        writer.writerow([keys, authors_videos[keys]])
+        #        #Finding frequency of these authors in the hotsets
+        #        if(keys in self.most_popular_authors_freq):
+        #            self.most_popular_authors_freq[keys] += 1
+        #        else:
+        #            self.most_popular_authors_freq[keys] = 1
+        return top_hotset_list
 
     def daterange(self, start_date, end_date):
         for n in range(int((end_date-start_date).days)):
             yield start_date + timedelta(n)
 
+    def videos_per_day(self):
+        videos_per_day_dict = {}
+        for keys in self.data.keys():
+            if(self.data[keys]['upload_date'] not in videos_per_day_dict):
+                videos_per_day_dict[self.data[keys]['upload_date']] = 1
+            else:
+                videos_per_day_dict[self.data[keys]['upload_date']] += 1
+        total_number_of_vids = 0
+        for keys in videos_per_day_dict.keys():
+            total_number_of_vids += videos_per_day_dict[keys]
+        print("Mean videos uploaded every day: ", total_number_of_vids/len(videos_per_day_dict) )
+        print("Total videos: ", total_number_of_vids)
+        print("Number of days: ", len(videos_per_day_dict))
     def is_int(self, number):
         try:
             int(number)
@@ -424,6 +485,125 @@ class Parser:
             return False
 
 
+class Poller:
+
+    def __init__(self):
+        self.bottom1k = []
+        self.middle1k = []
+        self.top1k = []
+        self.rank_data = []
+        self.bottom_responses = []
+        self.middle_responses = []
+        self.top_responses = []
+        self.data = {}
+        with open('video_dist.csv', newline='') as csvfile:
+            spamreader = csv.reader(csvfile, delimiter=',')
+            for row in spamreader:
+                self.rank_data.append(tuple(row))
+
+    def parse_dataset(self, path):
+
+         with open(path) as data_file:
+            self.data = json.load(data_file)
+
+    def select_1000_in_range(self, starting_rank, ending_rank, group):
+        #Starting rank and ending rank are the rank of videos by length
+        random.seed()
+        #use this to build random URL's
+        for n in range(0, 1000):
+            index = random.randrange(starting_rank, ending_rank)
+            title = self.rank_data[index]#video id
+            title = title[1]
+            title = self.data[title]['title']
+            title = title.replace(" ", "_")
+            vid_id = self.rank_data[index][0]
+
+            if(group == "bottom"):
+                self.bottom1k.append("http://xhamster.com/movies/"+vid_id+"/"+title)
+            elif(group == "middle"):
+                self.middle1k.append("http://xhamster.com/movies/"+vid_id+"/"+title)
+            else:
+                self.top1k.append("http://xhamster.com/movies/"+vid_id+"/"+title)
+
+
+
+
+
+    def analyse_res(self, list):
+        count = 0
+        map = {}
+        map_htmlcheck = {}
+        for res in list:
+            if(not(res == None)):
+                if(res.status_code not in map.keys()):
+                    map[res.status_code] = 1
+                elif(res.status_code in map.keys()):
+                    map[res.status_code] +=1
+                if res.status_code not in map_htmlcheck.keys():
+                    if self.check_content(res):
+                        map_htmlcheck[res.status_code] =1
+                elif res.status_code in map_htmlcheck.keys():
+                    if self.check_content(res):
+                        map_htmlcheck[res.status_code] += 1
+        if(200 in map.keys()):
+            print("200: ", map[200]/len(list))
+        if(200 in map_htmlcheck.keys()):
+            print("200 (content check): ", map_htmlcheck[200]/len(list))
+        if(301 in map.keys()):
+            print("301: ", map[301]/len(list))
+        if(301 in map_htmlcheck.keys()):
+            print("301 (content check): ", map_htmlcheck[301]/len(list))
+        if(404 in map.keys()):
+            print("404: ", map[404]/len(list))
+        if(404 in map_htmlcheck.keys()):
+            print("404 (content check): ", map_htmlcheck[404]/len(list))
+        if(410 in map.keys()):
+            print("410: ", map[410]/len(list))
+        if(410 in map_htmlcheck.keys()):
+            print("410 (content check): ", map_htmlcheck[410]/len(list))
+        if(500 in map.keys()):
+            print("500: ", map[500]/len(list))
+        if(500 in map_htmlcheck.keys()):
+            print("500 (content check): ", map_htmlcheck[500]/len(list))
+        if(503 in map.keys()):
+            print("503: ", map[503]/len(list))
+        if(503 in map_htmlcheck.keys()):
+            print("503 (content check): ", map_htmlcheck[503]/len(list))
+        if(504 in map.keys()):
+            print("504: ", map[504]/len(list))
+        if(504 in map_htmlcheck.keys()):
+            print("504 (content check): ", map_htmlcheck[504]/len(list))
+    def poll_address(self, uris, group):
+
+
+        rs = (grequests.get(u, timeout=100, allow_redirects=True) for u in uris)
+
+            # Add the task to our list of things to do via async
+
+
+        # Do our list of things to do via async
+        responses = grequests.map(rs)
+
+
+        return responses
+
+    def check_content(self, response):
+        #for response in responses:
+        if(response.status_code == 200):
+
+            #print(response.url, len(response))
+            init_title = response.url
+            temp_title = init_title[init_title.rfind('/')+1:len(init_title)-5]
+            title = temp_title.replace('_', ' ')
+        #print(response.content)
+            content = response.content.decode("utf-8")
+            title_final = title.lower()
+            content_final = content.lower()
+            if title_final in content_final or temp_title.lower() in content_final:#Need to come up with a classification based on the response
+                return True
+            else:
+                return False
+#print(title, "was found in ", response.url
 if __name__ == '__main__':
 
     xhamsterParser = Parser()
@@ -432,11 +612,26 @@ if __name__ == '__main__':
     xhamsterParser.get_number_of_videos()
     xhamsterParser.timeline_video_uploads()
     #xhamsterParser.video_size_dist()
-    #xhamsterParser.make_categories_tuples()
+   # xhamsterParser.make_categories_tuples()
+    #xhamsterParser.most_popular_category_single_category()
     #xhamsterParser.calculate_table_3()
     #xhamsterParser.most_popular_category()
     #xhamsterParser.video_uploads_per_author()
+    #xhamsterParser.videos_per_day()
     xhamsterParser.hotset_analysis()
+    #poller = Poller()
+    #print(1)
+    #poller.parse_dataset('xhamster.json')
+    #print(2)
+    #poller.select_1000_in_range(0,(int(len(poller.rank_data)/10)), 'bottom') #bottom 10%
+    #poller.analyse_res(poller.poll_address(poller.bottom1k, 'bottom'))
+    #print(3)
+    #poller.select_1000_in_range(int(len(poller.rank_data)*0.45), int((len(poller.rank_data)*0.55)), 'middle')
+    #poller.analyse_res(poller.poll_address(poller.middle1k, 'middle'))
+    #print(4)
+    #poller.select_1000_in_range(int(len(poller.rank_data)*0.9), int(len(poller.rank_data)-1), 'top')
+    #poller.analyse_res(poller.poll_address(poller.top1k, 'top'))
+
     print("Complete")
    # print("Number of users: ")
  #   xhamsterParser.get_number_of_users()
